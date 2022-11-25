@@ -1,8 +1,0 @@
-composter	        KEYWORD1
-readVbat    		KEYWORD2
-init        		KEYWORD2
-readH_onesample         KEYWORD2
-readT_Nsamples          KEYWORD2
-readWeight_Nsamples_discard  KEYWORD2
-readTouchbutton         KEYWORD2
-getStatus               KEYWORD2
