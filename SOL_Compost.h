@@ -6,9 +6,15 @@
 Include:
 
 - Temperature and Humidity control using one DHT sensor
+
+- Temperature reading using several DS18B20 one wire sensors
+    - Requires "DallasTemperature" and "Onewire" libraries obtained from Arduino IDE
+      https://lastminuteengineers.com/multiple-ds18b20-arduino-tutorial/
+
 - Lecture of four analog channels using Adafruit_ADS1015 and I2C protocol
+
 - Reading of battery voltaje using one ADC channel.
-- Reading of a digital or capacitive button using one input pin.
+
 - Reading of a digital or capacitive button using one input pin.
 
 
@@ -19,10 +25,14 @@ Include:
 #define SOL_Compost_h
 
 //#include "Arduino.h"
-#include "Wire.h" // for IMU 6050 control
+//#include "Wire.h"
 #include "I2Cdev.h"
 #include "Adafruit_ADS1X15.h"
+
 #include "DHT.h"
+
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 
 class Composter
@@ -31,7 +41,7 @@ class Composter
  public:
    //////// Constructor //////////////////
 
-   Composter(int DHTPin, int buttonPin, int relayPin);
+   Composter(int DHTPin, int buttonPin, int relayPin, int oneWirePin);
 
 
    ///////////////////////////////////////
@@ -40,7 +50,14 @@ class Composter
    //// Physical variable ////
    // DHT temperature and humidity values
    DHT dht ;
-   float T,H;
+   float T_DHT, H_DHT;
+
+   // OneWire temperature sensor variable
+   // Pass our oneWire reference to Dallas Temperature.
+   OneWire oneWire;
+   DallasTemperature sensors;
+   DeviceAddress insideThermometer;
+   float T_OneWire1;
 
    // Battery voltage read value
    float Vbat;
@@ -76,22 +93,24 @@ class Composter
     void getStatus();
     void readandcheckAll();
     void readDHT();
+    void readOneWire_onesensor();
     void readVbat_I2C();
     void readWeight_I2C_onesample();
     void readWeight_I2C_Nsamples(int);
     void readButton();
+    void analogbuttonpressed();
     void checkVbat();
     void checkH();
     void checkT();
     void checkWeight();
     void turnRelayOFF();
-    void analogbuttonpressed();
 
 
  private:
     int _DHTPin;
     int _buttonPin;
     int _relayPin;
+    int _oneWirePin;
 
 };
 

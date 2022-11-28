@@ -17,10 +17,10 @@ Include:
 
 //#include "Arduino.h"
 #include "SOL_Compost.h"
-#include "Wire.h" // for IMU 6050 control
-#include "I2Cdev.h"
-#include "Adafruit_ADS1X15.h"
-#include "DHT.h"
+//#include "Wire.h" // for IMU 6050 control
+//#include "I2Cdev.h"
+//#include "Adafruit_ADS1X15.h"
+//#include "DHT.h"
 
 // Uncomment for debug via serial port
 #define SerialDEBUG
@@ -53,10 +53,10 @@ Adafruit_ADS1015 ads;     /* Use this for the 12-bit version */
 
 //////////////////////////////////
 // Constructor //////////////////
-// Includes definition of dht object
+// Includes definition of dht and OneWire objects, separated by commas
 //Composter::Composter(int VbatPin)
-Composter::Composter(int DHTPin, int buttonPin, int relayPin):
-  dht(DHTPin, DHTTYPE){
+Composter::Composter(int DHTPin, int buttonPin, int relayPin, int oneWirePin):
+  dht(DHTPin, DHTTYPE),oneWire(oneWirePin),sensors(&oneWire){
 
   // Pin mode definition
   // Relay board outputs
@@ -69,6 +69,7 @@ Composter::Composter(int DHTPin, int buttonPin, int relayPin):
   _DHTPin=DHTPin;
   _buttonPin=buttonPin;
   _relayPin=relayPin;
+  _oneWirePin=oneWirePin;
 
 }
 
@@ -92,19 +93,48 @@ void Composter::init()
   // Checking for strange values of sensors at startup
   Serial.println("Checking sensor values...");
 
-  Serial.println("Checking temperature and humidity...");
+  Serial.println("Checking temperature and humidity from DHT...");
 
   // DHT sensor initiallization
   dht.begin();
   delay(1000);
-  // H and T check...
+  // H_DHT and T_DHT check...
   readDHT();
-  checkH(); // setting H flags
+  checkH(); // setting H_DHT flags
   checkT(); // setting typedef int MyCustomType; flags
-  if(flagT){ Serial.println("      T is in measurement range."); }
+  if(flagT){ Serial.println("      T_DHT is in measurement range."); }
       else {Serial.println("     Take care: temperature is not in measurement range." ); }
-  if(flagH){ Serial.println("      H is in measurement range."); }
+  if(flagH){ Serial.println("      H_DHT is in measurement range."); }
       else {Serial.println("     Take care: humidity is not in measurement range." ); }
+
+  // OneWire sensor initiallization
+  Serial.println("Checking temperature from One Wire Dallas sensors");
+  sensors.begin();
+  // locate devices on the bus
+  Serial.print("Locating devices...");
+  Serial.print("Found ");
+  Serial.print(sensors.getDeviceCount(), DEC);
+  Serial.println(" devices.");
+
+   // report parasite power requirements
+   Serial.print("Parasite power is: ");
+   if (sensors.isParasitePowerMode()) Serial.println("ON");
+   else Serial.println("OFF");
+
+   if (!sensors.getAddress(insideThermometer, 0)) Serial.println("Unable to find address for Device 0");
+
+   //Serial.print("Device 0 Address: ");
+   //printAddress(insideThermometer);
+   //Serial.println();
+
+   // set the resolution to 9 bit (Each Dallas/Maxim device is capable of several different resolutions)
+   sensors.setResolution(insideThermometer, 9);
+
+   Serial.print("Device 0 Resolution: ");
+   Serial.print(sensors.getResolution(insideThermometer), DEC);
+   Serial.println();
+
+
 
 /*
   // Initializing ADS1115
@@ -146,11 +176,11 @@ void Composter::getStatus()
 
 	Serial.println();
 	Serial.println("  Composter's physical variable:");
-  Serial.print("    Temperature (ºC): ");   Serial.print(T);
-  if(flagT){ Serial.println("      T is in measurement range."); }
+  Serial.print("    Temperature (ºC): ");   Serial.print(T_DHT);
+  if(flagT){ Serial.println("      T_DHT is in measurement range."); }
       else {Serial.println("     Take care: temperature is not in measurement range." ); }
-  Serial.print("    ; Humidity (%): ");   Serial.println(H);
-  if(flagH){ Serial.println("      H is in measurement range."); }
+  Serial.print("   Humidity (%): ");   Serial.print(H_DHT);
+  if(flagH){ Serial.println("      H_DHT is in measurement range."); }
       else {Serial.println("     Take care: humidity is not in measurement range." ); }
 /*
 	Serial.println("    Weight (g): ");   Serial.print(weight);
@@ -187,23 +217,46 @@ void Composter::readandcheckAll()
 void Composter::readDHT()
 {
 
-  H = dht.readHumidity();
+  H_DHT = dht.readHumidity();
   // Read temperature as Celsius (the default)
-  T = dht.readTemperature();
+  T_DHT = dht.readTemperature();
 
-  if (isnan(H) || isnan(T)) {
+  if (isnan(H_DHT) || isnan(T_DHT)) {
      Serial.println(F("Failed to read from DHT sensor!"));
      return;
    }
 
 #ifdef SerialDEBUG
   Serial.print("Temperature (Celsius): ");
-  Serial.println(T);
+  Serial.println(T_DHT);
   Serial.print("Humidity (%): ");
-  Serial.println(H);
+  Serial.println(H_DHT);
 #endif
 
 }
+
+void Composter::readOneWire_onesensor()
+{
+
+  // method 2 - faster
+  T_OneWire1 = sensors.getTempC(insideThermometer);
+  if(T_OneWire1 == DEVICE_DISCONNECTED_C)
+  {
+    Serial.println("Error: Could not read temperature data from OneWire sensors");
+    return;
+  }
+
+
+#ifdef SerialDEBUG
+  Serial.print("Temperature One Wire 1 (Celsius): ");
+  Serial.println(T_OneWire1);
+#endif
+
+}
+
+
+
+
 
 // Read analog value from battery voltage divider using ADS1115 ADC converter ( port Ain3)
 void Composter::readVbat_I2C()
@@ -330,6 +383,7 @@ void Composter::readButton()
 void Composter::analogbuttonpressed() {
 
   Serial.println("Analog button pressed...");
+  delay(1000); // for debug
 
 /*
   uint16_t reading = analogRead(_switchPin);
@@ -421,14 +475,14 @@ void Composter::checkVbat()
 void Composter::checkH()
 {
 
-  if( (H<H_LowerThresh) || (H>H_UpperThresh) ){ flagH=0; }
+  if( (H_DHT<H_LowerThresh) || (H_DHT>H_UpperThresh) || isnan(H_DHT) ){ flagH=0; }
   else { flagH=1; }
 
 }
 void Composter::checkT()
 {
 
-  if( (T<T_LowerThresh) || (T>T_UpperThresh) ){ flagT=0; }
+  if( (T_DHT<T_LowerThresh) || (T_DHT>T_UpperThresh) || isnan(T_DHT) ){ flagT=0; }
   else { flagT=1; }
 
 }
@@ -437,9 +491,9 @@ void Composter::checkT()
 void Composter::checkWeight()
 {
 
-  if((weight >= WeightLowerThresh) && (weight <= WeightUpperThresh))
-      { flagWeight=1; }
-      else { flagWeight=0; }
+  if( (weight<WeightLowerThresh) || (weight>WeightUpperThresh) || isnan(weight) )
+  { flagWeight=0; }
+  else { flagWeight=1; }
 
 }
 
